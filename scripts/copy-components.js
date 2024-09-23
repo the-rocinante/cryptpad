@@ -13,8 +13,6 @@ Fse.rmSync(oldComponentsPath, { recursive: true, force: true });
 
 [
     "alertify.js",
-    "bootstrap",
-    "bootstrap-tokenfield",
     "chainpad",
     "chainpad-listmap",
     "chainpad-netflux",

@@ -49,7 +49,6 @@ $(function () {
             '/common/common-util.js',
             'optional!/api/instance',
             'less!/customize/src/less2/pages/page-' + pageName + '.less',
-            'css!/components/bootstrap/dist/css/bootstrap.min.css',
             'css!/customize/fonts/cptools/style.css'
         ], function (ApiConfig, Util, Instance) {
             var $main = $(infoPage());
