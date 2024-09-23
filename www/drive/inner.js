@@ -17,7 +17,6 @@ define([
     '/customize/application_config.js',
     '/customize/messages.js',
 
-    'css!/components/bootstrap/dist/css/bootstrap.min.css',
     'css!/components/components-font-awesome/css/font-awesome.min.css',
     'less!/drive/app-drive.less',
 ], function (

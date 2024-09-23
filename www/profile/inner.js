@@ -30,7 +30,6 @@ define([
     'css!/components/codemirror/lib/codemirror.css',
     'css!/components/codemirror/addon/dialog/dialog.css',
     'css!/components/codemirror/addon/fold/foldgutter.css',
-    'css!/components/bootstrap/dist/css/bootstrap.min.css',
     'css!/components/components-font-awesome/css/font-awesome.min.css',
     'less!/profile/app-profile.less',
 ], function (

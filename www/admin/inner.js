@@ -24,7 +24,6 @@ define([
     '/install/onboardscreen.js',
 
     'css!/lib/datepicker/flatpickr.min.css',
-    'css!/components/bootstrap/dist/css/bootstrap.min.css',
     'css!/components/components-font-awesome/css/font-awesome.min.css',
     'less!/admin/app-admin.less',
 ], function(

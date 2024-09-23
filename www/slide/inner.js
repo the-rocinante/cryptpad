@@ -18,7 +18,6 @@ define([
     'cm/lib/codemirror',
     '/common/common-ui-elements.js',
 
-    'css!/components/bootstrap/dist/css/bootstrap.min.css',
     'css!/components/components-font-awesome/css/font-awesome.min.css',
     'css!/customize/src/print-landscape.css',
     'less!/slide/app-slide.less',
