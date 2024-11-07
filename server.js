@@ -2,8 +2,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-var Express = require('express');
-var Http = require('http');
 var Fs = require('fs');
 var nThen = require("nthen");
 var Util = require("./lib/common-util");
@@ -15,8 +13,6 @@ var config = require("./lib/load-config");
 var Environment = require("./lib/env");
 var Env = Environment.create(config);
 var Default = require("./lib/defaults");
-
-var app = Express();
 
 (function () {
     // you absolutely must provide an 'httpUnsafeOrigin' (a truthy string)
@@ -54,6 +50,23 @@ COMMANDS.UPDATE_QUOTA = function (msg, cb) {
 
 COMMANDS.GET_PROFILING_DATA = function (msg, cb) {
     cb(void 0, Env.bytesWritten);
+};
+
+COMMANDS.WS = function (msg, cb) {
+    let type = msg.type;
+    let data = msg.data;
+    let worker = msg.worker;
+    let sendMsg;
+    if (type === 'open') {
+        sendMsg = (data, cb) => {
+            Env.sendHttpCommand(worker, 'WS', {
+                id: msg.data.id,
+                data: data
+            }, cb);
+        };
+    }
+    Env.Server.give(type, data, sendMsg);
+    setTimeout(cb);
 };
 
 Object.keys(Env.plugins || {}).forEach(name => {
@@ -100,17 +113,16 @@ nThen(function (w) {
         });
         process.exit(1);
     }
-    Env.httpServer = Http.createServer(app);
-    Env.httpServer.listen(Env.websocketPort, Env.httpAddress, w(function () {
-        Env.Log.info('WEBSOCKET_LISTENING', {
-            port: Env.websocketPort,
-        });
-    }));
-}).nThen(function (w) {
+
     var limit = Env.maxWorkers;
     var workerState = {
         Env: Environment.serialize(Env),
     };
+
+    const response = Util.response(function (errLabel, info) {
+        if (!Env.Log) { return; }
+        Env.Log.error(errLabel, info);
+    });
 
     Cluster.setupPrimary({
         exec: './lib/http-worker.js',
@@ -127,9 +139,13 @@ nThen(function (w) {
         worker.on('message', msg => {
             if (!msg) { return; }
             var txid = msg.txid;
+
+            if (msg.type === 'REPLY') {
+                return void response.handle(txid, [msg.error, msg.content]);
+            }
+
             var content = msg.content;
             if (!content) { return; }
-
             var command = COMMANDS[content.command];
             if (typeof(command) !== 'function') {
                 return void Env.Log.error('UNHANDLED_HTTP_WORKER_COMMAND', msg);
@@ -145,6 +161,7 @@ nThen(function (w) {
                 });
             }));
 
+            content.worker = worker;
             command(content, cb);
         });
 
@@ -172,10 +189,13 @@ nThen(function (w) {
 
     var txids = {};
 
-    var sendCommand = (worker, command, data /*, cb */) => {
+    var sendCommand = Env.sendHttpCommand = (worker, command, data, cb) => {
+        let txid = Util.guid(txids);
+        cb = cb || function () {};
+        response.expect(txid, cb, 5000);
         worker.send({
             type: 'EVENT',
-            txid: Util.guid(txids),
+            txid: txid,
             command: command,
             data: data,
         });
@@ -215,7 +235,7 @@ nThen(function (w) {
         });
     }
     if (Env.OFFLINE_MODE) { return; }
-    if (Env.websocketPath) { return; }
+    if (config.externalWebsocketURL) { return; }
 
     require("./lib/api").create(Env);
 });
