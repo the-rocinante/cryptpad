@@ -141,6 +141,7 @@ nThen(function (w) {
             var txid = msg.txid;
 
             if (msg.type === 'REPLY') {
+                if (!response.expected(txid)) { return; }
                 return void response.handle(txid, [msg.error, msg.content]);
             }
 
@@ -192,7 +193,7 @@ nThen(function (w) {
     var sendCommand = Env.sendHttpCommand = (worker, command, data, cb) => {
         let txid = Util.guid(txids);
         cb = cb || function () {};
-        response.expect(txid, cb, 5000);
+        response.expect(txid, cb);
         worker.send({
             type: 'EVENT',
             txid: txid,
