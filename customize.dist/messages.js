@@ -138,6 +138,8 @@ define(req, function(AppConfig, Default, Language) {
 
     Messages.fm_restoreMultipleDialog = "Are you sure you want to restore {0} files and/or folders to their previous locations?"; // XXX: new translation key
 
+    Messages.calendar_show = 'Show calendars'; // XXX
+    Messages.calendar_hide = 'Hide calendars'; // XXX
     return Messages;
 
 });
