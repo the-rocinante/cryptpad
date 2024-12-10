@@ -171,8 +171,7 @@ define([
         }
         var href;
         var parsed;
-        var linkRegex = new RegExp("^(http|https)://");
-        if (fData.href && linkRegex.test(fData.href)) {
+        if (!fData.channel) {
             href = fData.href;
             parsed = {};
             parsed['hashData'] = {type: 'link'};
@@ -290,7 +289,7 @@ define([
                     };
                     var fileName = getUnique(sanitize(rawName), '.txt', existingNames);
                     existingNames.push(fileName.toLowerCase());
-                    var content = new Blob([fData.href], { type : "text/html;charset=utf-8" });
+                    var content = new Blob([fData.href, '\n'], { type: "text/plain;charset=utf-8" });
                     zip.file(fileName, content, opts);
                     console.log('DONE ---- ' + fileName);
                     setTimeout(done, 1000);
@@ -307,7 +306,7 @@ define([
     };
 
     // Add folders and their content recursively in the zip
-    var makeFolder = function (ctx, root, zip, fd) {
+    var makeFolder = function (ctx, root, zip, fd, sd) {
         if (typeof (root) !== "object") { return; }
         var existingNames = [];
         Object.keys(root).forEach(function (k) {
@@ -315,19 +314,20 @@ define([
             if (typeof el === "object" && el.metadata !== true) { // if folder
                 var fName = getUnique(sanitize(k), '', existingNames);
                 existingNames.push(fName.toLowerCase());
-                return void makeFolder(ctx, el, zip.folder(fName), fd);
+                return void makeFolder(ctx, el, zip.folder(fName), fd, sd);
             }
             if (ctx.data.sharedFolders[el]) { // if shared folder
+                let staticData = ctx.sf[el].static;
                 var sfData = ctx.sf[el].metadata;
                 var sfName = getUnique(sanitize((sfData && sfData.title) || 'Folder'), '', existingNames);
                 existingNames.push(sfName.toLowerCase());
-                return void makeFolder(ctx, ctx.sf[el].root, zip.folder(sfName), ctx.sf[el].filesData);
+                return void makeFolder(ctx, ctx.sf[el].root, zip.folder(sfName), ctx.sf[el].filesData, staticData);
             }
-            var fData = fd[el];
+            var fData = fd[el] || (sd && sd[el]);
             if (fData) {
                 addFile(ctx, zip, fData, existingNames);
                 return;
-            }
+            }  
         });
     };
 
@@ -351,15 +351,13 @@ define([
             sframeChan: sframeChan
         };
         var filesData = data.sharedFolderId && ctx.sf[data.sharedFolderId] ? ctx.sf[data.sharedFolderId].filesData : ctx.data.filesData;
-        var links = ctx.data.static;
-        Object.keys(links).forEach(function(key) {
-            filesData[key] = links[key];
-        });
+        var links = ctx.sf[data.sharedFolderId] && ctx.sf[data.sharedFolderId].static ? ctx.data.static && ctx.sf[data.sharedFolderId].static : ctx.data.static;
+
         progress('reading', -1); // Msg.settings_export_reading
         nThen(function (waitFor) {
             ctx.waitFor = waitFor;
             var zipRoot = ctx.zip.folder(data.name || Messages.fm_rootName);
-            makeFolder(ctx, ctx.folder || ctx.data.root, zipRoot, filesData);
+            makeFolder(ctx, ctx.folder || ctx.data.root, zipRoot, filesData, links);
             progress('download', {}); // Msg.settings_export_download
         }).nThen(function () {
             console.log(ctx.zip);
