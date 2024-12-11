@@ -68,10 +68,13 @@ define([
     var NEW_VERSION = 7; // version of the .bin, patches and ChainPad formats
     var PENDING_TIMEOUT = 30000;
     var CURRENT_VERSION = X2T.CURRENT_VERSION;
+    const HISTORY_KEEPER_INDEX_USER = 1;
+    const READ_ONLY_INDEX_USER = 2;
 
     //var READONLY_REFRESH_TO = 15000;
 
     var debug = function (x, type) {
+        console.log('XXX debug', type, x);
         if (!window.CP_DEV_MODE) { return; }
         console.debug(x, type);
     };
@@ -159,6 +162,7 @@ define([
             Object.keys(ids).forEach(function (id) {
                 var nId = id.slice(0,32);
                 if (users.indexOf(nId) === -1) {
+                    console.log('XXX deleteOffline', { nId, id });
                     delete ids[id];
                 }
             });
@@ -181,34 +185,45 @@ define([
             });
         };
 
-        const getNewUserIndex = function () {
-            const ids = content.ids || {};
-            const indexes = Object.values(ids).map((user) => user.index);
-            const maxIndex = Math.max(...indexes);
-            return maxIndex === -Infinity ? 1 : maxIndex+1;
+        const getNextUserIndex = function () {
+            let nextUserIndex;
+            do {
+                nextUserIndex = Util.createRandomInteger();
+            } while (nextUserIndex === HISTORY_KEEPER_INDEX_USER || nextUserIndex === READ_ONLY_INDEX_USER);
+            return nextUserIndex;
         };
 
         var setMyId = function () {
-            // Remove ids for users that have left the channel
-            deleteOffline();
-            var ids = content.ids;
+            deleteOffline(); // Remove ids for users that have left the channel
+            console.log('XXX setMyId start', { content: structuredClone(content) });
+            const ids = content.ids;
             if (!myOOId) {
                 myOOId = Util.createRandomInteger();
                 // f: function used in .some(f) but defined outside of the while
                 var f = function (id) {
                     return ids[id].ooid === myOOId;
                 };
+                // TODO Object.keys(ids) is incorrect here
                 while (Object.keys(ids).some(f)) {
                     myOOId = Util.createRandomInteger();
                 }
             }
-            var myId = getId();
+
+            const myId = getId();
+            const myIndex = getNextUserIndex();
+
             ids[myId] = {
                 ooid: myOOId,
-                index: getNewUserIndex(),
+                index: myIndex,
                 netflux: metadataMgr.getNetfluxId()
             };
-            oldIds = JSON.parse(JSON.stringify(ids));
+
+            if (!myUniqueOOId) {
+                myUniqueOOId = String(myOOId) + myIndex;
+            }
+
+            oldIds = structuredClone(ids);
+            console.log('XXX setMyId end', { myOOId, myIndex, content: structuredClone(content) });
             APP.onLocal();
         };
 
@@ -920,56 +935,44 @@ define([
 
         const getMyOOIndex = function() {
             const user = findUserByOOId(myOOId);
-            return user
-                ? user.index
-                : content.ids.length; // Assign an unused id to read-only users
+            return user ? user.index : READ_ONLY_INDEX_USER;
         };
 
-        var getParticipants = function () {
-            var users = metadataMgr.getMetadata().users;
-            var i = 1;
-            var p = Object.keys(content.ids || {}).map(function (id) {
-                var nId = id.slice(0,32);
-                if (!users[nId]) { return; }
-                var ooId = content.ids[id].ooid;
-                var idx = content.ids[id].index;
-                if (!ooId || ooId === myOOId) { return; }
-                if (idx >= i) { i = idx + 1; }
-                return {
-                    id: String(ooId) + idx,
-                    idOriginal: String(ooId),
-                    username: (users[nId] || {}).name || Messages.anonymous,
-                    indexUser: idx,
-                    connectionId: content.ids[id].netflux || Hash.createChannelId(),
-                    isCloseCoAuthoring:false,
-                    view: false
-                };
-            });
+        const getParticipants = function () {
+            const users = metadataMgr.getMetadata().users;
+            console.log('XXX getParticipants', users);
             // Add an history keeper user to show that we're never alone
             var hkId = Util.createRandomInteger();
-            p.push({
-                id: hkId,
+            const historyKeeper = [{
+                id: String(hkId),
                 idOriginal: String(hkId),
                 username: "History",
-                indexUser: i,
+                indexUser: HISTORY_KEEPER_INDEX_USER,
                 connectionId: Hash.createChannelId(),
                 isCloseCoAuthoring:false,
                 view: false
+            }];
+
+            const realParticipants = Object.entries(content.ids).map(([id, user]) => {
+                const nId = id.slice(0,32);
+                const username = (users[nId] || {}).name || Messages.anonymous;
+                return {
+                    id: String(user.ooid),
+                    idOriginal: String(user.ooid),
+                    username,
+                    indexUser: user.index,
+                    connectionId: user.netflux || Hash.createChannelId(),
+                    isCloseCoAuthoring: false,
+                    view: false
+                };
             });
-            const myOOIndex = getMyOOIndex();
-            if (!myUniqueOOId) { myUniqueOOId = String(myOOId) + myOOIndex; }
-            p.push({
-                id: String(myOOId),
-                idOriginal: String(myOOId),
-                username: metadataMgr.getUserData().name || Messages.anonymous,
-                indexUser: myOOIndex,
-                connectionId: metadataMgr.getNetfluxId() || Hash.createChannelId(),
-                isCloseCoAuthoring:false,
-                view: false
-            });
+
+            const participants = historyKeeper.concat(realParticipants);
+            console.log('XXX getParticipants end', participants);
+
             return {
-                index: myOOIndex,
-                list: p.filter(Boolean)
+                index: getMyOOIndex(),
+                list: participants,
             };
         };
 
@@ -978,13 +981,17 @@ define([
             var type = common.getMetadataMgr().getPrivateData().ooType;
             content.locks = content.locks || {};
             var l = content.locks[id] || {};
+            console.log('XXX getUserLock l', structuredClone(l));
             if (type === "sheet" || forceArray) {
-                return Object.keys(l).map(function (uid) { return l[uid]; });
+                const res = Object.keys(l).map(function (uid) { return l[uid]; });
+                console.log('XXX getUserLock result', structuredClone(res));
+                return res;
             }
             var res = {};
             Object.keys(l).forEach(function (uid) {
                 res[uid] = l[uid];
             });
+            console.log('XXX getUserLock result', structuredClone(res));
             return res;
         };
         var getLock = function () {
@@ -994,12 +1001,14 @@ define([
                 Object.keys(content.locks || {}).forEach(function (id) {
                     Array.prototype.push.apply(locks, getUserLock(id));
                 });
+                console.log('XXX getLock result', structuredClone(locks));
                 return locks;
             }
             locks = {};
             Object.keys(content.locks || {}).forEach(function (id) {
                 Util.extend(locks, getUserLock(id));
             });
+            console.log('XXX getLock result', structuredClone(locks));
             return locks;
         };
 
@@ -3409,7 +3418,7 @@ Uncaught TypeError: Cannot read property 'calculatedType' of null
 
             if (content.ids) {
                 handleNewIds(oldIds, content.ids);
-                oldIds = JSON.parse(JSON.stringify(content.ids));
+                oldIds = structuredClone(content.ids);
             }
             if (content.locks) {
                 handleNewLocks(oldLocks, content.locks);
